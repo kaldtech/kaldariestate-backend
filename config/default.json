@@ -1,0 +1,22 @@
+{
+    "db_url": "mongodb+srv://Semicolon:MMqi45qUece6Qu6B@cluster0.hlifa.mongodb.net/Kaldari",
+    "jwt_token_secret": "Kaldari-realestate-Key",
+    "refresh_jwt_token_secret": "Kaldari-realestate-Key",
+    "Winston": {
+        "level": "debug"
+    },
+    "nodeMail": {
+        "mail": "mukund.semicolon@gmail.com",
+        "password": "rjqtibncfswfofjz",
+        "service": "gmail"
+    },
+    "timeZone": "Asia/Calcutta",
+    "aws": {
+        "accessKeyId": "AKIARGEISSA22CREXQ46",
+        "secretAccessKey": "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",
+        "region": "ap-south-1",
+        "bucket_name": "kaldari",
+        "bucket_url":"https://kaldari.s3.ap-south-1.amazonaws.com"
+    },
+    "fcmKey": ""
+}

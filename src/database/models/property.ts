@@ -7,7 +7,7 @@ const propertySchema = new mongoose.Schema({
     bathroom: { type: String, default: null },
     garage: { type: String, default: null },
     price: { type: Number, default: 0 },
-    status: { type: Number, default: 1, enum: [1, 2] }, // 1 - sale
+    status: { type: Number, default: 0, enum: [0, 1] }, // 0 - rent || 1 - sale
     description: { type: String, default: null },
     image: { type: Array, default: [] },
     address: { type: String, default: null },

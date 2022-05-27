@@ -25,7 +25,7 @@ export const get_property = async (req: Request, res: Response) => {
     let user: any = req.header('user')
     try {
         let response = await propertyModel.aggregate([
-            { $match: { isActive: true, createdBy: { $ne: ObjectId(user?._id) } } },
+            { $match: { isActive: true, } },
             {
                 $lookup: {
                     from: "users",
@@ -41,7 +41,7 @@ export const get_property = async (req: Request, res: Response) => {
                                 }
                             }
                         },
-                        { $project: { name: 1, email: 1 } }
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
                     ],
                     as: "user"
                 }
@@ -101,7 +101,7 @@ export const get_own_property = async (req: Request, res: Response) => {
                                 }
                             }
                         },
-                        { $project: { name: 1, email: 1 } }
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
                     ],
                     as: "user"
                 }
@@ -115,19 +115,26 @@ export const get_own_property = async (req: Request, res: Response) => {
 
 export const get_property_location_wise = async (req: Request, res: Response) => {
     reqInfo(req)
-    let { latitude, longitude } = req.body
+    let { latitude, longitude, search } = req.body, match: any = {}
     let user: any = req.header('user')
     try {
-        let location_data = await getArea({ lat: latitude, long: longitude }, 10)
+        if (search) {
+            var typeArray: Array<any> = []
+            search = search.split(" ")
+            search.forEach(data => {
+                typeArray.push({ type: { $regex: data, $options: 'si' } })
+            })
+            match.$or = [{ $and: typeArray }]
+        }
+        match.isActive = true
+        match.createdBy = { $ne: ObjectId(user?._id) }
+        if (latitude && longitude) {
+            let location_data = await getArea({ lat: latitude, long: longitude }, 50)
+            match.latitude = { $gte: location_data.min.lat, $lte: location_data.max.lat }
+            match.longitude = { $gte: location_data.min.long, $lte: location_data.max.long }
+        }
         let isInRange = await propertyModel.aggregate([
-            {
-                $match: {
-                    isActive: true,
-                    createdBy: { $ne: ObjectId(user?._id) },
-                    latitude: { $gte: location_data.min.lat, $lte: location_data.max.lat },
-                    longitude: { $gte: location_data.min.long, $lte: location_data.max.long },
-                }
-            },
+            { $match: match },
             {
                 $lookup: {
                     from: "users",
@@ -143,13 +150,40 @@ export const get_property_location_wise = async (req: Request, res: Response) =>
                                 }
                             }
                         },
-                        { $project: { name: 1, email: 1 } }
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
                     ],
                     as: "user"
                 }
+            },
+            {
+                $lookup: {
+                    from: "favorites",
+                    let: { propertyId: "$_id" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$propertyId", "$$propertyId"] },
+                                        { $eq: ["$isActive", true] }
+                                    ]
+                                }
+                            }
+                        },
+                    ],
+                    as: "favoriteBy"
+                }
+            },
+            {
+                $project: {
+                    type: 1, buildYear: 1, squareFeet: 1, bedroom: 1, bathroom: 1, garage: 1, price: 1, status: 1, description: 1, image: 1,
+                    address: 1, latitude: 1, longitude: 1, createdBy: 1, isActive: 1, city: 1, state: 1, country: 1,
+                    user: 1,
+                    isFavorite: { $cond: { if: { $in: [ObjectId(user?._id), "$favoriteBy.createdBy"] }, then: true, else: false } },
+                }
             }
         ])
-        if (isInRange.length == 0) return res.status(200).json(new apiResponse(200, `Sorry! We don't find property in your area.`, {}, {}))
+        if (isInRange.length == 0) return res.status(200).json(new apiResponse(200, `Sorry! We don't find property in your area.`, [], {}))
         else return res.status(200).json(new apiResponse(200, responseMessage.getDataSuccess('property'), isInRange, {}))
     } catch (error) {
         return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, {}))
@@ -164,7 +198,7 @@ export const get_property_pagination = async (req: Request, res: Response) => {
     skip = ((parseInt(page) - 1) * parseInt(limit))
     try {
         let property_data = await propertyModel.aggregate([
-            { $match: { isActive: true, createdBy: { $ne: ObjectId(user?._id) } } },
+            { $match: { isActive: true, } },
             {
                 $lookup: {
                     from: "users",
@@ -180,7 +214,7 @@ export const get_property_pagination = async (req: Request, res: Response) => {
                                 }
                             }
                         },
-                        { $project: { name: 1, email: 1 } }
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
                     ],
                     as: "user"
                 }
@@ -257,7 +291,7 @@ export const get_property_by_id = async (req: Request, res: Response) => {
                                 }
                             }
                         },
-                        { $project: { name: 1, email: 1 } }
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
                     ],
                     as: "user"
                 }
@@ -290,6 +324,100 @@ export const get_property_by_id = async (req: Request, res: Response) => {
                 }
             }
         ])
+        return res.status(200).json(new apiResponse(200, responseMessage?.getDataSuccess('property'), response, {}));
+    } catch (error) {
+        return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, {}))
+    }
+}
+
+export const get_filter_property = async (req: Request, res: Response) => {
+    reqInfo(req)
+    let { limit, page, latitude, longitude, search, price } = req.body, match: any = {}, skip = 0, response: any = {}
+    let user: any = req.header('user')
+    limit = parseInt(limit)
+    skip = ((parseInt(page) - 1) * parseInt(limit))
+    try {
+        if (search) {
+            var typeArray: Array<any> = []
+            search = search.split(" ")
+            search.forEach(data => {
+                typeArray.push({ type: { $regex: data, $options: 'si' } })
+            })
+            match.$or = [{ $and: typeArray }]
+        }
+        if (latitude && longitude) {
+            let location_data = await getArea({ lat: latitude, long: longitude }, 50)
+            match.latitude = { $gte: location_data.min.lat, $lte: location_data.max.lat }
+            match.longitude = { $gte: location_data.min.long, $lte: location_data.max.long }
+        }
+        if (price) match.price = price
+        match.isActive = true
+        match.createdBy = { $ne: ObjectId(user?._id) }
+        let property_data = await propertyModel.aggregate([
+            { $match: match },
+            {
+                $lookup: {
+                    from: "users",
+                    let: { createdBy: "$createdBy" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$_id", "$$createdBy"] },
+                                        { $eq: ["$isActive", true] }
+                                    ]
+                                }
+                            }
+                        },
+                        { $project: { name: 1, email: 1, image: 1, phoneNumber: 1 } }
+                    ],
+                    as: "user"
+                }
+            },
+            {
+                $lookup: {
+                    from: "favorites",
+                    let: { propertyId: "$_id" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$propertyId", "$$propertyId"] },
+                                        { $eq: ["$isActive", true] }
+                                    ]
+                                }
+                            }
+                        },
+                    ],
+                    as: "favoriteBy"
+                }
+            },
+            {
+                $facet: {
+                    property: [
+                        { $sort: { createdAt: -1 } },
+                        { $skip: skip },
+                        { $limit: limit },
+                        {
+                            $project: {
+                                type: 1, buildYear: 1, squareFeet: 1, bedroom: 1, bathroom: 1, garage: 1, price: 1, status: 1, description: 1, image: 1,
+                                address: 1, latitude: 1, longitude: 1, createdBy: 1, isActive: 1,
+                                user: 1,
+                                isFavorite: { $cond: { if: { $in: [ObjectId(user?._id), "$favoriteBy.createdBy"] }, then: true, else: false } },
+                            }
+                        }
+                    ],
+                    property_count: [{ $count: "count" }]
+                }
+            },
+        ])
+        response.property_data = property_data[0].property || []
+        response.state = {
+            page, limit,
+            page_limit: Math.ceil(property_data[0]?.property_count[0]?.count / limit)
+        }
         return res.status(200).json(new apiResponse(200, responseMessage?.getDataSuccess('property'), response, {}));
     } catch (error) {
         return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, {}))

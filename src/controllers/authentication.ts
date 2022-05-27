@@ -23,10 +23,11 @@ export const signUp = async (req: Request, res: Response) => {
         let body = req.body, otpFlag = 1, authToken = 0
         let isAlready: any = await userModel.findOne({ email: body?.email, isActive: true })
         if (isAlready) return res.status(409).json(new apiResponse(409, responseMessage?.alreadyEmail, {}, {}))
+        if (isAlready?.isEmailVerified == false) return res.status(502).json(new apiResponse(502, responseMessage.emailUnverified, {}, {}));
         while (otpFlag == 1) {
             for (let flag = 0; flag < 1;) {
-                authToken = await Math.round(Math.random() * 1000000)
-                if (authToken.toString().length == 6) {
+                authToken = await Math.round(Math.random() * 10000)
+                if (authToken.toString().length == 4) {
                     flag++
                 }
             }
@@ -35,14 +36,14 @@ export const signUp = async (req: Request, res: Response) => {
         }
         body.authToken = authToken
         body.otp = authToken
-        body.otpExpireTime = new Date(new Date().setMinutes(new Date().getMinutes() + 10))
-        const salt = await bcryptjs.genSaltSync(10)
+        // body.otpExpireTime = new Date(new Date().setMinutes(new Date().getMinutes() + 10))
+        const salt = await bcryptjs.genSaltSync(8)
         const hashPassword = await bcryptjs.hash(body.password, salt)
         delete body.password
         body.password = hashPassword
         await new userModel(body).save().then(async (data) => {
             await email_verification_mail(data, authToken)
-            return res.status(200).json(new apiResponse(200, responseMessage?.signupSuccess, {}, {}))
+            return res.status(200).json(new apiResponse(200, responseMessage?.signupSuccess, { _id: data._id }, {}))
         })
     } catch (error) {
         return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, error))
@@ -55,8 +56,10 @@ export const login = async (req: Request, res: Response) => {
     reqInfo(req)
     try {
         // response = await userModel.findOneAndUpdate({ email: body.email, isActive: true }, { $addToSet: { deviceToken: body?.deviceToken } }).select('-__v -createdAt -updatedAt')
-        response = await userModel.findOne({ email: body.email, isActive: true }).select('-__v -createdAt -updatedAt')
+        // response = await userModel.findOne({ email: body.email, isActive: true }).select('-__v -createdAt -updatedAt')
+        response = await userModel.findOneAndUpdate({ email: body.email, isActive: true }, { lastLogin: new Date() }, { new: true }).select('-__v -createdAt -updatedAt')
         if (!response) return res.status(400).json(new apiResponse(400, responseMessage?.invalidUserPasswordEmail, {}, {}))
+        if (response.isEmailVerified == false) return res.status(502).json(new apiResponse(502, responseMessage?.emailUnverified, {}, {}));
         const passwordMatch = await bcryptjs.compare(body.password, response.password)
         if (!passwordMatch) return res.status(400).json(new apiResponse(400, responseMessage?.invalidUserPasswordEmail, {}, {}))
         const token = jwt.sign({
@@ -81,6 +84,8 @@ export const login = async (req: Request, res: Response) => {
             name: response?.name,
             email: response?.email,
             image: response?.image,
+            phoneNumber: response?.phoneNumber,
+            isEmailVerified: response?.isEmailVerified,
             token,
             refresh_token
         }
@@ -103,9 +108,10 @@ export const forgot_password = async (req: Request, res: Response) => {
         if (!data) {
             return res.status(400).json(new apiResponse(400, responseMessage?.invalidEmail, {}, {}));
         }
+        if (data?.isEmailVerified == false) return res.status(502).json(new apiResponse(502, responseMessage?.emailUnverified, {}, {}));
         while (otpFlag == 1) {
             for (let flag = 0; flag < 1;) {
-                otp = await Math.round(Math.random() * 1000000);
+                otp = await Math.round(Math.random() * 10000);
                 if (otp.toString().length == 6) {
                     flag++;
                 }
@@ -115,7 +121,7 @@ export const forgot_password = async (req: Request, res: Response) => {
         }
         let response: any = await forgot_password_mail(data, otp).then(result => { return result }).catch(error => { return error })
         if (response) {
-            await userModel.findOneAndUpdate(body, { otp, otpExpireTime: new Date(new Date().setMinutes(new Date().getMinutes() + 10)) })
+            await userModel.findOneAndUpdate(body, { otp })
             return res.status(200).json(new apiResponse(200, `${response}`, {}, {}));
         }
         else return res.status(501).json(new apiResponse(501, responseMessage?.errorMail, {}, `${response}`));
@@ -131,9 +137,9 @@ export const otp_verification = async (req: Request, res: Response) => {
     let body = req.body
     try {
         body.isActive = true
-        let data = await userModel.findOne(body);
+        let data = await userModel.findOneAndUpdate(body, { otp: null, isEmailVerified: true, authToken: body.otp, lastLogin: new Date() }, { new: true });
         if (!data) return res.status(400).json(new apiResponse(400, responseMessage?.invalidOTP, {}, {}))
-        if (new Date(data.otpExpireTime).getTime() < new Date().getTime()) return res.status(410).json(new apiResponse(410, responseMessage?.expireOTP, {}, {}))
+        // if (new Date(data.otpExpireTime).getTime() < new Date().getTime()) return res.status(410).json(new apiResponse(410, responseMessage?.expireOTP, {}, {}))
         const token = jwt.sign({
             _id: data._id,
             authToken: data.authToken,
@@ -157,11 +163,49 @@ export const otp_verification = async (req: Request, res: Response) => {
             email: data?.email,
             image: data?.image,
             otp: data?.otp,
+            phoneNumber: data?.phoneNumber,
+            isEmailVerified: data?.isEmailVerified,
             token,
             refresh_token
         }, {}));
     } catch (error) {
         return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, error))
+    }
+}
+
+export const resend_otp = async (req: Request, res: Response) => {
+    reqInfo(req)
+    let { email } = req.body,
+        otpFlag = 1, // OTP has already assign or not for cross-verification
+        otp = 0,
+        response
+    try {
+        let data = await userModel.findOne({ email, isActive: true })
+        if (!data) return res.status(400).json(new apiResponse(400, responseMessage.invalidEmail, {}, {}));
+        while (otpFlag == 1) {
+            for (let flag = 0; flag < 1;) {
+                otp = await Math.round(Math.random() * 10000)
+                if (otp.toString().length == 4) {
+                    flag++
+                }
+            }
+            let isAlreadyAssign = await userModel.findOne({ otp: otp })
+            if (isAlreadyAssign?.otp != otp) otpFlag = 0
+        }
+        if (data.isEmailVerified == false) {
+            response = await email_verification_mail(data, otp)
+        }
+        else {
+            response = await forgot_password_mail(data, otp)
+        }
+        if (response) {
+            await userModel.findOneAndUpdate({ email, isActive: true }, { otp })
+            return res.status(200).json(new apiResponse(200, `${response}`, {}, {}));
+        }
+        else return res.status(501).json(new apiResponse(501, responseMessage.errorMail, {}, `${response}`));
+    } catch (error) {
+        console.log(error)
+        return res.status(500).json(new apiResponse(500, responseMessage.internalServerError, {}, {}))
     }
 }
 
@@ -180,14 +224,13 @@ export const reset_password = async (req: Request, res: Response) => {
         body.password = hashPassword
 
         for (let flag = 0; flag < 1;) {
-            authToken = await Math.round(Math.random() * 1000000)
-            if (authToken.toString().length == 6) {
+            authToken = await Math.round(Math.random() * 10000)
+            if (authToken.toString().length == 4) {
                 flag++
             }
         }
         body.authToken = authToken
         body.otp = 0
-        body.otpExpireTime = null
         let response = await userModel.findOneAndUpdate({ _id: ObjectId(id), isActive: true, otp: otp }, body, { new: true })
         if (response) {
             return res.status(200).json(new apiResponse(200, responseMessage?.resetPasswordSuccess, { action: "please go to login page" }, {}))
@@ -263,8 +306,8 @@ export const update_profile = async (req: Request, res: Response) => {
     let user: any = req.header('user'),
         body: any = req.body
     try {
-        let existData = await userModel.findOne({ _id: { $ne: ObjectId(user._id) }, email: body.email, isActive: true })
-        if (existData) return res.status(409).json(new apiResponse(409, responseMessage?.alreadyEmail, {}, {}))
+        let existData = await userModel.findOne({ _id: { $ne: ObjectId(user._id) }, phoneNumber: body.phoneNumber, isActive: true })
+        if (existData) return res.status(409).json(new apiResponse(409, responseMessage?.alreadyPhoneNumber, {}, {}))
         let response = await userModel.findOneAndUpdate({ _id: ObjectId(user._id), isActive: true }, body)
         if (body?.image != response?.image && response.image != null && body?.image != null && body?.image != undefined) {
             let [folder_name, image_name] = await URL_decode(response?.image)
@@ -281,7 +324,57 @@ export const get_profile = async (req: Request, res: Response) => {
     reqInfo(req)
     let user: any = req.header('user')
     try {
-        let response = await userModel.findOne({ _id: ObjectId(user._id), isActive: true })
+        // let response = await userModel.findOne({ _id: ObjectId(user._id), isActive: true })
+        let response = await userModel.aggregate([
+            { $match: { _id: ObjectId(user._id), isActive: true } },
+            {
+                $lookup: {
+                    from: "properties",
+                    let: { createdBy: "$_id" },
+                    pipeline: [
+                        {
+                            $match: {
+                                $expr: {
+                                    $and: [
+                                        { $eq: ["$createdBy", "$$createdBy"] },
+                                        { $eq: ["$isActive", true] }
+                                    ]
+                                }
+                            }
+                        },
+                        {
+                            $lookup: {
+                                from: "favorites",
+                                let: { propertyId: "$_id" },
+                                pipeline: [
+                                    {
+                                        $match: {
+                                            $expr: {
+                                                $and: [
+                                                    { $eq: ["$propertyId", "$$propertyId"] },
+                                                    { $eq: ["$isActive", true] }
+                                                ]
+                                            }
+                                        }
+                                    },
+                                    { $project: { createdBy: 1 } },
+                                ],
+                                as: "favoriteBy"
+                            }
+                        },
+                        {
+                            $addFields: { isFavorite: { $cond: { if: { $in: [ObjectId(user?._id), "$favoriteBy.createdBy"] }, then: true, else: false } }, }
+                        },
+                        {
+                            $project: { favoriteBy: 0 }
+                        }
+                    ],
+                    as: "property"
+                }
+            },
+
+            { $project: { name: 1, email: 1, phoneNumber: 1, image: 1, loginType: 1, isEmailVerified: 1, property: 1 } }
+        ])
         if (response) return res.status(200).json(new apiResponse(200, responseMessage.getDataSuccess('Your profile'), response, {}))
         else return res.status(501).json(new apiResponse(501, responseMessage.getDataNotFound('profile'), {}, {}))
     } catch (error) {
@@ -293,7 +386,7 @@ export const delete_account = async (req: Request, res: Response) => {
     reqInfo(req)
     let user: any = req.header('user')
     try {
-        let response = await userModel.findOneAndUpdate({ _id: ObjectId(user._id), isActive: true }, { isActive: false }).select('image _id email name username')
+        let response = await userModel.findOneAndUpdate({ _id: ObjectId(user._id), isActive: true }, { isActive: false }).select('image _id email name name')
         if (response) return res.status(200).json(new apiResponse(200, responseMessage?.deleteDataSuccess('account'), {}, {}))
         else return res.status(501).json(new apiResponse(501, responseMessage?.getDataNotFound('account'), {}, {}))
     } catch (error) {
@@ -305,6 +398,16 @@ export const user_logout = async (req: Request, res: Response) => {
     reqInfo(req)
     try {
         await userModel.findOneAndUpdate({ _id: ObjectId((req.header('user') as any)?._id), isActive: true, }, { $pull: { deviceToken: req.body?.deviceToken } })
+        return res.status(200).json(new apiResponse(200, responseMessage?.logout, {}, {}));
+    } catch (error) {
+        return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, error));
+    }
+}
+
+export const deletedata = async (req: Request, res: Response) => {
+    reqInfo(req)
+    try {
+        await userModel.updateMany({}, { $set: { lastLogin: new Date() } })
         return res.status(200).json(new apiResponse(200, responseMessage?.logout, {}, {}));
     } catch (error) {
         return res.status(500).json(new apiResponse(500, responseMessage?.internalServerError, {}, error));

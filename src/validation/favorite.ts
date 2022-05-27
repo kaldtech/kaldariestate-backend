@@ -9,6 +9,7 @@ export const add_favorite = async (req: Request, res: Response, next) => {
         propertyId: Joi.string().required().error(new Error('propertyId is required!'))
     })
     schema.validateAsync(req.body).then(result => {
+        if (!isValidObjectId(result.propertyId)) return res.status(400).json(new apiResponse(400, 'invalid propertyId', {}, {}));
         return next()
     }).catch(error => { res.status(400).json(new apiResponse(400, error.message, {}, {})) })
 }

@@ -36,6 +36,7 @@ export const login = async (req: Request, res: Response, next: any) => {
 export const forgot_password = async (req: Request, res: Response, next: any) => {
     const schema = Joi.object({
         email: Joi.string().lowercase().max(50).required().error(new Error('email is string! & max length is 50')),
+        phoneNumber: Joi.string().lowercase().max(50).required().error(new Error('phoneNumber is string! & max length is 50')),
     })
     schema.validateAsync(req.body).then(result => {
         req.body = result
@@ -61,7 +62,7 @@ export const reset_password = async (req: Request, res: Response, next: any) => 
 
 export const otp_verification = async (req: Request, res: Response, next: any) => {
     const schema = Joi.object({
-        otp: Joi.number().min(100000).max(999999).required().error(new Error('otp is required! & only is 6 digits'))
+        otp: Joi.number().min(1000).max(9999).required().error(new Error('otp is required! & only is 6 digits'))
     })
     schema.validateAsync(req.body).then(result => {
         return next()
@@ -72,8 +73,7 @@ export const otp_verification = async (req: Request, res: Response, next: any) =
 
 export const resend_otp = async (req: Request, res: Response, next: any) => {
     const schema = Joi.object({
-        email: Joi.string().error(new Error('email is string! ')),
-        phoneNumber: Joi.string().error(new Error('phoneNumber is string!')),
+        email: Joi.string().required().error(new Error('email is string! ')),
     })
     schema.validateAsync(req.body).then(result => {
         return next()
@@ -85,11 +85,11 @@ export const resend_otp = async (req: Request, res: Response, next: any) => {
 export const update_profile = async (req: Request, res: Response, next: any) => {
     const schema = Joi.object({
         name: Joi.string().error(new Error('name is string')),
-        email: Joi.string().error(new Error('email is string')),
+        phoneNumber: Joi.string().error(new Error('phoneNumber is string')),
         image: Joi.string().allow("").error(new Error('image is string')),
-        address: Joi.string().error(new Error('address is string!')),
-        latitude: Joi.number().error(new Error('latitude is number!')),
-        longitude: Joi.number().error(new Error('longitude is number!')),
+        // address: Joi.string().error(new Error('address is string!')),
+        // latitude: Joi.number().error(new Error('latitude is number!')),
+        // longitude: Joi.number().error(new Error('longitude is number!')),
     })
     schema.validateAsync(req.body).then(result => {
         return next()

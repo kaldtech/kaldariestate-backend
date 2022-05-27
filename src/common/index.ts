@@ -8,6 +8,7 @@ export class apiResponse {
         this.message = message
         this.data = data
         this.error = error
+
     }
 }
 
@@ -55,12 +56,6 @@ export const SMS_message = {
     OTP_verification: `Kaldari app verification code:`,
 }
 
-export const userStatus = {
-    user: 0,
-    admin: 1,
-    photographer: 2,
-}
-
 export const booking_status = {
     pending: 0,
     accept: 1,
@@ -86,6 +81,13 @@ export const getArea = (current: { lat: any, long: any }, RadiusInKm: number) =>
         },
     };
 }
+export const userStatus = {
+    user: 0,
+    admin: 1,
+    upload: 5
+
+}
+
 
 export const notification_types = {
     add_booking: async (data: any) => {
@@ -129,3 +131,11 @@ export const notification_types = {
         }
     },
 }
+
+export const cacheKeyName = {
+    allCountry: `ALL_COUNTRY`,
+    country: (id: any): any => `COUNTRY_${id}`,
+    state: (id: any): any => `STATE_${id}`,
+}
+
+export const [cachingTimeOut, commentLimit, perPIPPrice,] = [1800, 2, 0.05]

@@ -6,7 +6,7 @@ export const responseMessage = {
     alreadyPhoneNumber: "PhoneNumber is already registered!",
     emailUnverified: "Your email is unverified!",
     accountBlock: "Your account has been blocked!",
-    invalidUserPasswordEmail: "You have entered an invalid username or password!",
+    invalidUserPasswordEmail: "You have entered an invalid name or password!",
     invalidOTP: "Invalid OTP!",
     expireOTP: "OTP has been expired!",
     OTPverified: "OTP has been verified successfully!",

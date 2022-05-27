@@ -7,10 +7,11 @@ import express, { Request, Response } from 'express';
 import http from 'http';
 import cors from 'cors'
 import * as packageInfo from '../package.json'
-import { mongooseConnection } from './database'
+import { messageModel, mongooseConnection, roomModel } from './database'
 import { router } from './routes'
+import { logger } from './helpers/winston_logger';
 const app = express();
-
+const ObjectId = require('mongoose').Types.ObjectId
 console.log(process.env.NODE_ENV || 'localhost');
 app.use(mongooseConnection)
 app.use(cors())
@@ -35,6 +36,37 @@ app.get('/isServerUp', (req, res) => {
 });
 app.use(router)
 app.use('*', bad_gateway);
-
 let server = new http.Server(app);
+let io = require('socket.io')(server, {
+    cors: {
+        origin: "*"
+    },
+})
+io.on('connection', (socket) => {
+    console.log(`New user arrived!`, socket.id);
+
+    socket.on('join_room', async (data) => {
+        // console.log('join_room', data);
+        socket.room = data.roomId;
+        socket.userId = data.userId;
+        socket.join(data.roomId);
+
+        socket.on('send_message', async (data) => {
+            // console.log('send_message', data);
+            let { roomId, senderId, receiverId, message } = data
+            await roomModel.updateOne({ _id: ObjectId(data?.roomId), isActive: true }, { isActive: true })
+            let messageData: any = await new messageModel({ receiverId: ObjectId(receiverId), senderId: ObjectId(senderId), message, roomId: ObjectId(roomId) }).save()
+            data = { senderId, receiverId, message, _id: messageData?._id, createdAt: messageData?.createdAt }
+            io.to(socket?.id).emit('receive_message', data);
+            socket.to(`${roomId}`).emit('receive_message', data)
+        });
+    });
+
+    socket.on('left_room', function (data) {
+        console.log('left_room');
+        socket.leave(socket.room);
+    });
+
+})
+
 export default server;

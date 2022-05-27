@@ -4,6 +4,7 @@ import { userModel } from '../database'
 import mongoose from 'mongoose'
 import { apiResponse, } from '../common'
 import { Request, Response } from 'express'
+import { responseMessage } from './response'
 
 const ObjectId = mongoose.Types.ObjectId
 const jwt_token_secret = config.get('jwt_token_secret')
@@ -15,6 +16,7 @@ export const userJWT = async (req: Request, res: Response, next) => {
         try {
             let isVerifyToken = jwt.verify(authorization, jwt_token_secret)
             result = await userModel.findOne({ _id: ObjectId(isVerifyToken._id), isActive: true })
+            if (isVerifyToken?.type != userType && userType != "5") return res.status(403).json(new apiResponse(403, responseMessage.accessDenied, {}, {}));
             if (result?.isBlock == true) return res.status(403).json(new apiResponse(403, 'Your account han been blocked.', {}, {}));
             if (result?.isActive == true && isVerifyToken.authToken == result.authToken && isVerifyToken.type == result.userType) {
                 // Set in Header Decode Token Information
